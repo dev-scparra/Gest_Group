@@ -46,7 +46,7 @@ pip install -r requirements.txt
 ## Ejecutar
 
 ```bash
-python src/main.py
+python -m src.main
 ```
 
 Salir con la tecla `q`. La configuración (α del filtro EMA, frames estables
