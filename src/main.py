@@ -1,11 +1,12 @@
 """Punto de entrada del pipeline completo. Orquestacion pura (ver spec 009):
 no contiene logica de negocio propia de ningun modulo 001-008.
 
-Ejecutar con: python src/main.py
+Ejecutar con: python -m src.main
 Salir con la tecla 'q'.
 """
 
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
@@ -24,6 +25,19 @@ from src.visualizacion.renderer import dibujar_frame
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "default.yaml"
 
+# Un fallo persistente ocurre una vez por frame: sin acotar, inunda la consola a
+# ~30 lineas/segundo y entierra el primer mensaje, que es el util (CNF-FR-002).
+FRECUENCIA_LOG_ERRORES = 30
+_errores_logueados = 0
+
+
+def _log_acotado(mensaje: str) -> None:
+    """Imprime la primera ocurrencia y luego una de cada FRECUENCIA_LOG_ERRORES."""
+    global _errores_logueados
+    if _errores_logueados % FRECUENCIA_LOG_ERRORES == 0:
+        print(mensaje)
+    _errores_logueados += 1
+
 
 def cargar_config(ruta: Path = CONFIG_PATH) -> dict:
     """Carga config/default.yaml. Falla rapido y explicito si falta o esta mal formado
@@ -39,6 +53,82 @@ def cargar_config(ruta: Path = CONFIG_PATH) -> dict:
     return config
 
 
+@dataclass
+class EstadoPipeline:
+    """El unico estado mutable de la orquestacion (INT-FR-006).
+
+    `None` significa "aun no se ha confirmado ninguna accion", que es distinto de
+    `Accion.A_E` ("ninguna"), una accion identidad ya confirmada (SEM-FR-003).
+    """
+
+    ultima_accion: Accion | None = None
+
+
+class MedidorFPS:
+    """Mide el FPS sostenido del pipeline (SC-G02). Lo DIBUJA el modulo 008; aqui
+    solo se mide, que es lo que 009 tiene que hacer (CNF-FR-003)."""
+
+    def __init__(self):
+        self._ultimo_tick = time.time()
+        self._frames = 0
+        self.actual = 0.0
+
+    def tick(self) -> float:
+        self._frames += 1
+        ahora = time.time()
+        transcurrido = ahora - self._ultimo_tick
+        if transcurrido >= 1.0:
+            self.actual = self._frames / transcurrido
+            self._frames = 0
+            self._ultimo_tick = ahora
+        return self.actual
+
+
+def procesar_frame(
+    frame_rgb,
+    detector: DetectorManos,
+    filtro: FiltroEMA,
+    estabilizador: EstabilizadorGesto,
+    homomorfismo: Homomorfismo,
+    estado: EstadoPipeline,
+) -> tuple[Gesto, Accion | None]:
+    """Un ciclo del pipeline: 004 -> 005 -> 006 -> phi (002) -> 007.
+
+    Sin cv2 ni I/O de ventana, para que la orquestacion sea testeable sin camara
+    (SEM-FR-005) — 009 era el unico modulo sin suite propia, y es justo donde vive
+    el estado que VIS-FR-003 regula.
+
+    Retorna (gesto instantaneo, ultima accion confirmada) para que 008 los dibuje.
+    """
+    landmarks = detector.procesar(frame_rgb)
+
+    if landmarks is None:
+        filtro.reset()  # INT-FR-003: sin esto, al reaparecer la mano el filtro
+        gesto_actual = Gesto.E  # mezclaria la posicion vieja con la nueva.
+    else:
+        gesto_actual = clasificar_gesto(filtro.aplicar(landmarks))
+
+    # INT-FR-004: se alimenta E explicitamente en los frames sin mano, en vez de
+    # omitir la llamada, para que el contador de debounce no cruce una perdida de mano.
+    gesto_confirmado = estabilizador.actualizar(gesto_actual)
+
+    if gesto_confirmado is not None:
+        accion = homomorfismo.aplicar(gesto_confirmado)  # INT-FR-005
+        resultado = ejecutar_accion(accion)
+        if not resultado.exito:
+            # ACC-FR-005: el fallo se reporta. Sin esto, todo el reporte de errores
+            # de 007 moria en silencio y el usuario veia "no pasa nada" (CNF-FR-005).
+            _log_acotado(f"[accion] {accion.name} fallo: {resultado.mensaje}")
+
+        # SEM-FR-001: A_E es un no-op (ACC-FR-004), no un disparo real. Confirmar E
+        # -- que es lo que pasa a los `frames_estables` frames de retirar la mano --
+        # no debe desplazar del overlay a la ultima accion que si tuvo efecto.
+        if accion != Accion.A_E:
+            estado.ultima_accion = accion
+
+    return gesto_actual, estado.ultima_accion
+
+
 def main() -> None:
     config = cargar_config()
 
@@ -52,64 +142,49 @@ def main() -> None:
         min_tracking_confidence=config["deteccion"]["min_tracking_confidence"],
     )
     filtro = FiltroEMA(alpha=config["filtro_ema"]["alpha"])
-    estabilizador = EstabilizadorGesto(frames_estables=config["estabilizador"]["frames_estables"])
+    estabilizador = EstabilizadorGesto(
+        frames_estables=config["estabilizador"]["frames_estables"]
+    )
     homomorfismo = Homomorfismo()
 
-    ultima_accion = Accion.A_E
-    fps_ultimo_tick = time.time()
-    fps_contador = 0
-    fps_actual = 0.0
+    estado = EstadoPipeline()
+    medidor = MedidorFPS()
 
     try:
         while True:
+            exito, frame_bgr, frame_rgb = captura.leer_frame()
+            if not exito:
+                # Camara desconectada: distinto de "sin mano", que es un estado
+                # transitorio esperado (INT-FR-002, caso borde de spec 009 Sec. 5).
+                print("Camara desconectada o sin frames disponibles. Terminando.")
+                break
+
             try:
-                exito, frame_bgr, frame_rgb = captura.leer_frame()
-                if not exito:
-                    # Camara desconectada: distinto de "sin mano" (INT-FR-002, caso borde).
-                    print("Camara desconectada o sin frames disponibles. Terminando.")
-                    break
+                gesto_actual, accion = procesar_frame(
+                    frame_rgb, detector, filtro, estabilizador, homomorfismo, estado
+                )
+                landmarks_dibujo = detector.landmarks_para_dibujo()
+            except Exception as exc:  # INT-FR-008 / NFR-G02
+                # El frame se trata como "sin mano" y el loop sigue (spec 009 Sec. 5).
+                _log_acotado(f"Error no anticipado en el frame, se ignora: {exc}")
+                gesto_actual, accion = Gesto.E, estado.ultima_accion
+                landmarks_dibujo = None
 
-                landmarks = detector.procesar(frame_rgb)
-                if landmarks is None:
-                    filtro.reset()
-                    gesto_actual = Gesto.E
-                    gesto_confirmado = estabilizador.actualizar(Gesto.E)
-                else:
-                    landmarks_suav = filtro.aplicar(landmarks)
-                    gesto_actual = clasificar_gesto(landmarks_suav)
-                    gesto_confirmado = estabilizador.actualizar(gesto_actual)
+            fps = medidor.tick()
 
-                if gesto_confirmado is not None:
-                    ultima_accion = homomorfismo.aplicar(gesto_confirmado)
-                    ejecutar_accion(ultima_accion)
-
+            try:
                 dibujar_frame(
-                    frame_bgr,
-                    detector.landmarks_para_dibujo(),
-                    gesto_actual,
-                    ultima_accion,
-                    filtro.alpha,
+                    frame_bgr, landmarks_dibujo, gesto_actual, accion, filtro.alpha, fps
                 )
+            except Exception as exc:  # NFR-G02
+                _log_acotado(f"Fallo al dibujar el overlay, se muestra crudo: {exc}")
 
-                fps_contador += 1
-                ahora = time.time()
-                if ahora - fps_ultimo_tick >= 1.0:
-                    fps_actual = fps_contador / (ahora - fps_ultimo_tick)
-                    fps_contador = 0
-                    fps_ultimo_tick = ahora
-
-                cv2.putText(
-                    frame_bgr, f"FPS: {fps_actual:.1f}", (10, 460),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 180), 1,
-                )
-
-                cv2.imshow("GestGroup", frame_bgr)
-                if cv2.waitKey(1) & 0xFF == ord("q"):
-                    break
-
-            except Exception as exc:  # NFR-G02 / INT-FR-008: un frame no puede tumbar la sesion.
-                print(f"Error no anticipado en el frame actual, se ignora: {exc}")
-                continue
+            # imshow/waitKey quedan FUERA de los try: si una excepcion recurrente los
+            # saltara, la ventana se congelaria y la tecla 'q' (INT-FR-007) nunca se
+            # procesaria — solo quedaria Ctrl-C (CNF-FR-002).
+            cv2.imshow("GestGroup", frame_bgr)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
     finally:
         captura.liberar()
 

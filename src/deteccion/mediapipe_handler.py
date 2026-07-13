@@ -9,6 +9,10 @@ import numpy as np
 
 mp_hands = mp.solutions.hands
 
+# Por debajo de este score, la etiqueta Left/Right de MediaPipe no es fiable
+# (mano ambigua o parcialmente fuera de cuadro) y se reporta None (PUL-FR-006).
+SCORE_LATERALIDAD_MINIMO = 0.8
+
 
 class DetectorManos:
     def __init__(
@@ -44,3 +48,24 @@ class DetectorManos:
         if self._ultimo_resultado is None or not self._ultimo_resultado.multi_hand_landmarks:
             return None
         return self._ultimo_resultado.multi_hand_landmarks[0]
+
+    def lateralidad(self) -> str | None:
+        """'Left' / 'Right' de la primera mano, o None si no hay mano o el score es bajo.
+
+        La etiqueta se refiere al frame que MediaPipe efectivamente proceso — que en
+        este pipeline ya viene espejado por CAP-FR-002, la convencion de selfie que
+        MediaPipe asume — asi que corresponde a la mano fisica del usuario, sin
+        des-espejarla (PUL-FR-003).
+
+        El clasificador NO usa este dato para decidir el pulgar (ver spec 012,
+        Decision D2: la orientacion se deriva de la geometria de la palma, no de la
+        etiqueta). Se expone como diagnostico para `scripts/smoke_vision.py` y como
+        base de un futuro soporte de dos manos.
+        """
+        resultado = self._ultimo_resultado
+        if resultado is None or not resultado.multi_handedness:
+            return None
+        clasificacion = resultado.multi_handedness[0].classification[0]
+        if clasificacion.score < SCORE_LATERALIDAD_MINIMO:
+            return None
+        return clasificacion.label

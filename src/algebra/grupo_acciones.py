@@ -63,6 +63,12 @@ CAYLEY_A: dict[tuple[Accion, Accion], Accion] = {
 }
 
 
+# El grupo (A, o) como objeto importable (ALG-FR-008, CNF-FR-011), simetrico a
+# ELEMENTOS_G/IDENTIDAD_G en grupo_gestos.py.
+ELEMENTOS_A: frozenset[Accion] = frozenset(Accion)
+IDENTIDAD_A: Accion = Accion.A_E
+
+
 def operacion_A(a1: Accion, a2: Accion) -> Accion:
     """a1 . a2, lookup O(1) en la tabla de Cayley de A."""
     return CAYLEY_A[(a1, a2)]

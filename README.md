@@ -55,14 +55,36 @@ del debounce, resolución/FPS de cámara, umbrales de MediaPipe) se carga desde
 
 ### Gestos reconocidos
 
+Funciona **con cualquiera de las dos manos**, de frente a la cámara. La detección del
+pulgar (de la que dependen `G3`, `G4` y `G5`) se orienta por la geometría de la palma
+—el eje meñique→índice— y no por una comparación de `x` con signo fijo, que solo sería
+válida para una mano y con la otra intercambiaría `G3` y `G5`. Ver
+[`specs/012`](specs/012-clasificador-pulgar-lateralidad/spec.md), Decisión D2.
+
 | Gesto | Descripción | Acción `φ(g)` |
 |---|---|---|
-| `E` | Mano en reposo | Ninguna acción |
+| `E` | Mano en reposo / gesto no reconocido | Ninguna acción |
 | `G1` | Índice levantado | Subir volumen |
 | `G2` | Índice + medio levantados | Bajar volumen |
-| `G3` | Puño cerrado | Pausa / Play |
+| `G3` | Puño cerrado (pulgar abajo) | Pausa / Play |
 | `G4` | Mano abierta (5 dedos) | Siguiente pista |
-| `G5` | Solo el pulgar | Pista anterior |
+| `G5` | Solo el pulgar extendido | Pista anterior |
+
+La tabla de clasificación es la de
+[`specs/012`, Sección 5](specs/012-clasificador-pulgar-lateralidad/spec.md), que
+reemplaza a la de la Sección 4.5 del documento de contexto: aquella declaraba el
+pulgar como indiferente en la fila del puño, lo que hacía de `G5` un caso particular
+de `G3` y dejaba a `G5` inalcanzable.
+
+### Comprobar la detección sin lanzar acciones
+
+```bash
+python -m scripts.smoke_vision
+```
+
+Muestra la ventana con los landmarks e imprime, una vez por segundo, la mano detectada
+(`Left`/`Right`), el gesto clasificado y los 5 booleanos de dedos. Útil para verificar
+que **los 6 gestos se clasifican igual con las dos manos** antes de una demo.
 
 ### Análisis algebraico sin cámara
 
@@ -81,8 +103,16 @@ los 36 pares de `G×G`. Es el artefacto de evidencia para el reporte técnico
 pytest tests/ -v
 ```
 
-60 tests, todos deterministas y sin necesidad de cámara/hardware real (capa
+86 tests, todos deterministas y sin necesidad de cámara/hardware real (capa
 algebraica pura + mocks para captura/detección/ejecución de acciones).
+
+Las specs [010](specs/010-robustez-ejecutor/spec.md)–[013](specs/013-conformidad-menor/spec.md)
+documentan una auditoría de conformidad specs↔código y las correcciones que salieron
+de ella. Los tres defectos con consecuencia funcional real habían sobrevivido a 60
+tests en verde, en los tres casos por el mismo motivo: **el test modelaba el camino
+feliz con la misma suposición que el código**. La suite añade ahora un test de
+orquestación (009 no tenía), fixtures de mano para ambas lateralidades, y un test que
+falla si alguien importa `cv2` dentro de `src/algebra/`.
 
 ## Estructura del repositorio
 

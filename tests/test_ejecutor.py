@@ -1,6 +1,8 @@
+import subprocess
 from unittest.mock import MagicMock, patch
 
 from src.acciones.ejecutor import (
+    TIMEOUT_SUBPROCESS_S,
     VK_MEDIA_NEXT_TRACK,
     VK_MEDIA_PLAY_PAUSE,
     VK_MEDIA_PREV_TRACK,
@@ -92,6 +94,50 @@ def test_linux_accion_no_soportada_no_invoca_subprocess(mock_run, mock_system):
     resultado = ejecutar_accion(Accion.A3)
     mock_run.assert_not_called()
     assert resultado.exito is False
+
+
+# --- Spec 010: fallos del binario de SO (ROB-FR-001..003, ROB-FR-005) ---
+#
+# Estos tests parchean subprocess.run con `side_effect` (una excepcion), no con
+# `return_value` (un objeto con returncode). Un mock que solo devuelve returncode
+# no puede alcanzar el camino de "el binario no existe", que es precisamente el
+# caso borde que 007/spec.md Seccion 5 declara obligatorio.
+
+
+@patch("src.acciones.ejecutor.platform.system", return_value="Linux")
+@patch("src.acciones.ejecutor.subprocess.run", side_effect=FileNotFoundError("amixer"))
+def test_binario_ausente_reporta_fallo_sin_excepcion(mock_run, mock_system):
+    resultado = ejecutar_accion(Accion.A1)
+    assert resultado.exito is False
+    assert "amixer" in resultado.mensaje
+    assert "alsa-utils" in resultado.mensaje
+
+
+@patch("src.acciones.ejecutor.platform.system", return_value="Darwin")
+@patch(
+    "src.acciones.ejecutor.subprocess.run",
+    side_effect=subprocess.TimeoutExpired(cmd="osascript", timeout=TIMEOUT_SUBPROCESS_S),
+)
+def test_timeout_reporta_fallo(mock_run, mock_system):
+    resultado = ejecutar_accion(Accion.A3)
+    assert resultado.exito is False
+    assert "timeout" in resultado.mensaje
+
+
+@patch("src.acciones.ejecutor.platform.system", return_value="Darwin")
+@patch("src.acciones.ejecutor.subprocess.run", side_effect=PermissionError("denegado"))
+def test_permission_error_reporta_fallo(mock_run, mock_system):
+    resultado = ejecutar_accion(Accion.A1)
+    assert resultado.exito is False
+    assert "osascript" in resultado.mensaje
+
+
+@patch("src.acciones.ejecutor.platform.system", return_value="Darwin")
+@patch("src.acciones.ejecutor.subprocess.run")
+def test_run_pasa_timeout_a_subprocess(mock_run, mock_system):
+    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+    ejecutar_accion(Accion.A1)
+    assert mock_run.call_args.kwargs["timeout"] == TIMEOUT_SUBPROCESS_S
 
 
 @patch("src.acciones.ejecutor._enviar_tecla_virtual")

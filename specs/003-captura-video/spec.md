@@ -29,7 +29,7 @@ class CapturaVideo:
 
 | ID | Requerimiento |
 |---|---|
-| CAP-FR-001 | DEBE abrir la cámara indicada por `camara_id` (default 0) a la resolución y FPS configurados (FR-001 de la spec original: 640×480 @30 FPS). |
+| CAP-FR-001 (corregido, ver 013/CNF-FR-009) | DEBE abrir la cámara indicada por `camara_id` (default 0) a la **resolución configurada** (`ancho`×`alto`, default 640×480, leída de `config/default.yaml`) y a **30 FPS fijos**. La redacción original ("resolución y FPS configurados") sugería que el FPS era configurable; no lo es, y no hay caso de uso que lo pida — añadir una perilla de config sin consumidor es superficie gratuita. Si algún día hace falta, se añade `camara.fps` a la config y se pasa al constructor. |
 | CAP-FR-002 | DEBE aplicar espejo horizontal (`cv2.flip(frame, 1)`) para que el movimiento en pantalla coincida con el movimiento real del usuario frente a la cámara. |
 | CAP-FR-003 | DEBE entregar tanto el frame BGR crudo como su conversión a RGB en la misma llamada, para que el módulo 004 no tenga que repetir la conversión. |
 | CAP-FR-004 | `leer_frame()` DEBE devolver `(False, None, None)` si la cámara no entrega frame (desconexión, fin de stream), sin lanzar excepción. |

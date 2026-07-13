@@ -16,7 +16,9 @@ Este módulo es intencionalmente delgado: no contiene lógica de negocio propia,
 
 **Entradas:** `config/default.yaml` (α, `frames_estables`, `camara_id`, resolución, umbrales de MediaPipe).
 
-**Salidas:** ninguna programática — es el punto de entrada del proceso (`python src/main.py`).
+**Salidas:** ninguna programática — es el punto de entrada del proceso (`python -m src.main`).
+
+> **Corrección (013/CNF-FR-008):** esta spec decía `python src/main.py`, que **no funciona**: `main.py` usa imports absolutos (`from src.acciones.ejecutor import ...`) y falla al ejecutarse como script suelto. La forma correcta es `python -m src.main`, como documenta el README.
 
 ## 3. Requerimientos funcionales
 
@@ -27,9 +29,10 @@ Este módulo es intencionalmente delgado: no contiene lógica de negocio propia,
 | INT-FR-003 | Cuando 004 devuelve `None` (sin mano) en un frame donde el frame anterior sí tenía mano, DEBE llamar `FiltroEMA.reset()` (005) — implementa EMA-FR-003. |
 | INT-FR-004 | Cuando 004 devuelve `None`, DEBE alimentar `Gesto.E` a `EstabilizadorGesto.actualizar()` (006) en vez de omitir la llamada — implementa la convención que 006/spec.md Sección 6 dejó pendiente de fijar aquí. |
 | INT-FR-005 | Cuando `EstabilizadorGesto.actualizar()` devuelve un `Gesto` no-`None` (confirmación), DEBE calcular `φ(g)` (002) y llamar `ejecutar_accion()` (007) exactamente una vez. |
-| INT-FR-006 | DEBE mantener el valor de "última acción confirmada" a través de frames (para pasarlo a 008, VIS-FR-003) — es el único estado mutable que vive en `main.py` en vez de en un módulo dedicado, precisamente porque es un artefacto de la orquestación, no del dominio de ningún módulo individual. |
+| INT-FR-006 (revisado por [011](../011-semantica-gesto-identidad/spec.md), SEM-FR-001) | DEBE mantener el valor de "última acción confirmada" a través de frames (para pasarlo a 008, VIS-FR-003) — es el único estado mutable que vive en `main.py` en vez de en un módulo dedicado, precisamente porque es un artefacto de la orquestación, no del dominio de ningún módulo individual. **Solo se actualiza cuando `φ(g) != A_E`**: `A_E` es un no-op (ACC-FR-004), no un disparo real, y confirmar `E` —que es lo que ocurre a los `frames_estables` frames de retirar la mano— no debe desplazar del overlay a la última acción que sí tuvo efecto. Su valor inicial es `None` ("aún no hay acción"), distinguible de `A_E` ("ninguna"). |
 | INT-FR-007 | DEBE permitir salida limpia con una tecla (p. ej. `q`), llamando `CapturaVideo.liberar()` (003) antes de terminar el proceso. |
-| INT-FR-008 | DEBE capturar y loguear (sin propagar) cualquier excepción no anticipada de un frame individual, para que un fallo puntual no termine la sesión completa (NFR-G02 aplicado al loop principal). |
+| INT-FR-008 (precisado por [013](../013-conformidad-menor/spec.md), CNF-FR-002) | DEBE capturar y loguear (sin propagar) cualquier excepción no anticipada de un frame individual, para que un fallo puntual no termine la sesión completa (NFR-G02 aplicado al loop principal). El manejador **NO puede saltarse `cv2.imshow` ni `cv2.waitKey`**: si lo hace, una excepción que se repita en todos los frames congela la ventana y la tecla `q` (INT-FR-007) deja de procesarse, quedando solo `Ctrl-C`. El frame se trata como "sin mano" (Sección 5) y el render y el teclado siguen ocurriendo. El logueo DEBE estar acotado (primera ocurrencia + 1 de cada N), o un fallo persistente inunda la consola a ~30 líneas/segundo. |
+| INT-FR-009 (añadido por 013, CNF-FR-005) | DEBE loguear el `mensaje` de `ResultadoEjecucion` cuando `ejecutar_accion()` devuelve `exito=False`. ACC-FR-005 dice que el fallo "se reporta, aunque en el MVP no se actúa sobre ese reporte **más allá de loguearlo**" — pero el logueo no existía: `main.py` descartaba el valor de retorno, así que todo el reporte de errores de 007 moría en silencio y el usuario veía "el gesto se detecta pero no pasa nada" sin diagnóstico. |
 
 ## 4. Criterios de aceptación
 

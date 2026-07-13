@@ -50,6 +50,18 @@ def test_reset_limpia_historia():
     assert resultado == nuevo_landmark
 
 
+def test_primer_frame_devuelve_copia_no_el_estado_interno():
+    """CNF-FR-004: devolver el propio x_prev deja el estado del filtro expuesto a que
+    un consumidor lo mute in-place y corrompa la historia sin sintoma cercano."""
+    filtro = FiltroEMA(alpha=0.3)
+    landmarks = [(0.1, 0.2, 0.3)] * 21
+
+    resultado = filtro.aplicar(landmarks)
+    resultado[0] = (9.9, 9.9, 9.9)
+
+    assert filtro.x_prev[0] == (0.1, 0.2, 0.3)
+
+
 def test_alpha_invalido_falla():
     with pytest.raises(ValueError):
         FiltroEMA(alpha=0.0)

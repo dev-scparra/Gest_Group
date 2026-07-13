@@ -27,8 +27,12 @@ class FiltroEMA:
         self, landmarks_raw: list[tuple[float, float, float]]
     ) -> list[tuple[float, float, float]]:
         if self.x_prev is None:
+            # Primer frame tras instanciar o tras reset(): sin historia, se toma el
+            # valor crudo tal cual (EMA-FR-002). Se devuelve una COPIA, no el propio
+            # x_prev: entregar el estado interno lo deja expuesto a que un consumidor
+            # lo mute in-place y corrompa la historia del filtro (CNF-FR-004).
             self.x_prev = list(landmarks_raw)
-            return self.x_prev
+            return list(self.x_prev)
 
         coords_suav = []
         for (x_raw, y_raw, z_raw), (x_prev, y_prev, z_prev) in zip(

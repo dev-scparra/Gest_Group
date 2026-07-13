@@ -1,8 +1,11 @@
-"""Verificacion generica de los 4 axiomas de grupo, reusada por G y por A (ALG-FR-005).
+"""Verificacion generica de los 4 axiomas de grupo, aplicable a G y a A (ALG-FR-005).
 
-No se duplica la logica entre grupo_gestos.py y grupo_acciones.py: ambos
-delegan en `verificar_axiomas_grupo()` pasando su propio conjunto de
-elementos, operacion e identidad.
+`verificar_axiomas_grupo()` es una utilidad parametrizada por (elementos,
+operacion, identidad): la misma funcion verifica G y A sin duplicar logica. No
+la invocan `grupo_gestos.py` ni `grupo_acciones.py` — esos modulos solo declaran
+sus tablas de Cayley; quien la aplica a ambos grupos es la suite
+(`tests/test_verificacion.py`), que es donde la verificacion tiene sentido como
+evidencia ejecutable (Demostracion 1, docs/demostraciones.md).
 """
 
 from dataclasses import dataclass, field

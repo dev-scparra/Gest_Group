@@ -31,10 +31,15 @@ class Homomorfismo:
     def __init__(self, tabla_phi: dict[Gesto, Accion] | None = None):
         if tabla_phi is None:
             tabla_phi = dict(TABLA_PHI_DEFECTO)
-        claves_faltantes = set(Gesto) - set(tabla_phi.keys())
-        if claves_faltantes:
+        # HOM-FR-001 exige EXACTAMENTE las 6 claves de Gesto. Comprobar solo las
+        # faltantes dejaba pasar claves espurias, que despues contaminaban imagen()
+        # y kernel() con acciones que ningun gesto produce (CNF-FR-001).
+        if set(tabla_phi) != set(Gesto):
+            faltantes = set(Gesto) - set(tabla_phi)
+            sobrantes = set(tabla_phi) - set(Gesto)
             raise ValueError(
-                f"tabla_phi no es total sobre G: faltan {claves_faltantes}"
+                "tabla_phi debe tener exactamente las 6 claves de Gesto "
+                f"(faltan: {faltantes or 'ninguna'}; sobran: {sobrantes or 'ninguna'})"
             )
         self.tabla_phi = tabla_phi
 

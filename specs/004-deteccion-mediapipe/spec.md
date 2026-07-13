@@ -30,10 +30,11 @@ class DetectorManos:
 | ID | Requerimiento |
 |---|---|
 | DET-FR-001 | DEBE configurar MediaPipe Hands con `static_image_mode=False`, `max_num_hands=1` (fuera de alcance del MVP: dos manos — ver 000-overview). |
-| DET-FR-002 | DEBE devolver exactamente 21 tuplas `(x,y,z)` normalizadas en `[0,1]` cuando se detecta una mano. |
+| DET-FR-002 (corregido, ver 013/CNF-FR-006) | DEBE devolver exactamente 21 tuplas `(x,y,z)` cuando se detecta una mano. `x` e `y` están normalizados a `[0,1]` respecto al ancho y alto de la imagen; **`z` NO está en `[0,1]`**: es profundidad relativa a la muñeca, con signo (negativo = más cerca de la cámara) y en la misma escala que `x`, sin garantía de rango. La redacción original ("21 tuplas normalizadas en `[0,1]`") era falsa para `z`; el código siempre hizo lo correcto (pasar el valor tal cual, sin validar ni recortar). |
 | DET-FR-003 | DEBE devolver `None` (no lista vacía, no excepción) cuando no se detecta ninguna mano en el frame. |
 | DET-FR-004 | Si `results.multi_hand_landmarks` contiene más de una mano (no debería, por `max_num_hands=1`, pero MediaPipe lo permite estructuralmente), DEBE usar únicamente la primera y text ignorar el resto — consistente con FR-013 de la spec original y US-6. |
 | DET-FR-005 | DEBE exponer, además de las coordenadas puras, el objeto de landmarks crudo de MediaPipe (`NormalizedLandmarkList`) para que el módulo de visualización (008) pueda dibujarlo con `mp_drawing.draw_landmarks` sin que 004 dependa de lógica de dibujo. |
+| DET-FR-006 (añadido por [012](../012-clasificador-pulgar-lateralidad/spec.md), PUL-FR-001) | DEBE exponer la lateralidad de la mano detectada (`multi_handedness` → `"Left"` / `"Right"`), o `None` si no hay mano o el score de la clasificación es bajo (< 0.8). La etiqueta se refiere al frame **ya espejado** que 004 recibe de 003 (CAP-FR-002), que es la convención de "selfie" que MediaPipe asume, así que corresponde a la mano física del usuario sin necesidad de des-espejarla. |
 
 ## 4. Criterios de aceptación
 

@@ -68,6 +68,12 @@ CAYLEY_G: dict[tuple[Gesto, Gesto], Gesto] = {
 }
 
 
+# El grupo (G, o) como objeto importable, no como convencion que cada consumidor
+# reconstruye a mano con set(Gesto)/Gesto.E (ALG-FR-008, CNF-FR-011).
+ELEMENTOS_G: frozenset[Gesto] = frozenset(Gesto)
+IDENTIDAD_G: Gesto = Gesto.E
+
+
 def operacion_G(g1: Gesto, g2: Gesto) -> Gesto:
     """g1 . g2, lookup O(1) en la tabla de Cayley de G."""
     return CAYLEY_G[(g1, g2)]

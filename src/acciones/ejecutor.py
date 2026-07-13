@@ -29,6 +29,17 @@ _VK_POR_ACCION = {
 }
 
 
+# Cota superior generosa: osascript/amixer responden en milisegundos. El timeout
+# solo se alcanza en el camino de fallo (p. ej. un osascript colgado esperando el
+# dialogo de permisos de Accesibilidad), nunca en el de exito (ROB-FR-002).
+TIMEOUT_SUBPROCESS_S = 2.0
+
+_SUGERENCIA_POR_BINARIO = {
+    "amixer": "instalar el paquete 'alsa-utils'",
+    "osascript": "solo existe en macOS",
+}
+
+
 @dataclass
 class ResultadoEjecucion:
     exito: bool
@@ -36,7 +47,36 @@ class ResultadoEjecucion:
 
 
 def _run(comando: list[str]) -> ResultadoEjecucion:
-    resultado = subprocess.run(comando, capture_output=True, text=True)
+    """Ejecuta un comando de SO y traduce CUALQUIER fallo a ResultadoEjecucion.
+
+    `subprocess.run` lanza FileNotFoundError si el binario no existe: nunca llega a
+    devolver un objeto con `returncode`. Comprobar solo el returncode deja escapar
+    esa excepcion y tumba el pipeline, que es justo lo que 007/spec.md Seccion 5
+    prohibe. Ver spec 010 (ROB-FR-001..003).
+    """
+    binario = comando[0]
+    try:
+        resultado = subprocess.run(
+            comando,
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT_SUBPROCESS_S,
+            check=False,  # el returncode se inspecciona abajo; check=True lanzaria
+        )
+    except FileNotFoundError:
+        sugerencia = _SUGERENCIA_POR_BINARIO.get(binario, "revisar el PATH")
+        return ResultadoEjecucion(
+            exito=False,
+            mensaje=f"binario '{binario}' no encontrado en el PATH ({sugerencia})",
+        )
+    except subprocess.TimeoutExpired:
+        return ResultadoEjecucion(
+            exito=False,
+            mensaje=f"'{binario}' excedio el timeout de {TIMEOUT_SUBPROCESS_S}s",
+        )
+    except OSError as exc:  # PermissionError y demas fallos de SO (ROB-FR-003)
+        return ResultadoEjecucion(exito=False, mensaje=f"fallo al ejecutar '{binario}': {exc}")
+
     if resultado.returncode != 0:
         return ResultadoEjecucion(exito=False, mensaje=resultado.stderr or resultado.stdout)
     return ResultadoEjecucion(exito=True, mensaje=None)
