@@ -45,6 +45,21 @@ El detalle de cada historia (criterios Given/When/Then) vive en el `spec.md` del
 003 captura ─▶ 004 deteccion ─▶ 005 filtro-ema ─▶ 006 clasificador ─▶ (φ) ─▶ 007 acciones ─▶ 008 visualizacion ─▶ 009 integracion
 ```
 
+### 3.1 Specs de corrección (auditoría de conformidad, 2026-07-13)
+
+Los módulos 001-009 están implementados y su suite (60 tests) está en verde. Una auditoría línea a línea de specs↔código encontró cuatro grupos de desviaciones, documentados como specs nuevas en vez de parchearse en silencio. **No modifican el diseño**: corrigen la distancia entre lo que las specs 001-009 dicen y lo que el código hace (o, en algunos casos, corrigen la spec, porque el código tenía razón).
+
+| # | Spec de corrección | Prefijo | Severidad | Corrige a |
+|---|---|---|---|---|
+| [010](../010-robustez-ejecutor/spec.md) | Robustez del ejecutor ante fallo del binario de SO | `ROB-` | **Alta** | 007 |
+| [011](../011-semantica-gesto-identidad/spec.md) | Semántica del gesto identidad y "última acción confirmada" | `SEM-` | Media | 006, 008, 009 |
+| [012](../012-clasificador-pulgar-lateralidad/spec.md) | Clasificador: pulgar, puño y lateralidad de la mano | `PUL-` | **Alta** | 004, 006 |
+| [013](../013-conformidad-menor/spec.md) | Backlog de conformidad menor (12 ítems transversales) | `CNF-` | Baja-Media | 001, 003, 004, 005, 008, 009 |
+
+**Orden de aplicación recomendado:** 010 (aislado, no colisiona con nada) → 011 (reestructura `main.py` y crea la suite de orquestación que hoy no existe) → 012 (depende de la cámara para medir el signo del pulgar) → 013 (dos de sus ítems tocan el `main.py` que 011 reestructura).
+
+**Lección transversal de la auditoría:** los tres defectos con consecuencia funcional real (010, 011, 012) sobrevivieron a 60 tests en verde, y por el mismo motivo en los tres casos — *el test modelaba el camino feliz con la misma suposición que el código*. En 010, el mock de `subprocess.run` nunca podía lanzar `FileNotFoundError`, que es justo el caso borde que la spec exigía cubrir. En 011, el requerimiento (VIS-FR-003) regula un valor que decide 009, pero se probó en la suite de 008. En 012, los fixtures sintéticos se generaron con la misma convención de lateralidad que el clasificador asume. Un test escrito desde la misma premisa que el código no verifica la premisa: la hereda. De ahí que las tres specs nuevas exijan **ver fallar el test antes de aplicar el fix**.
+
 Nota de secuenciación: 001 y 002 no dependen de hardware y pueden construirse/probarse/defenderse el mismo día del setup, en paralelo con 003-005. El punto de integración real entre "mundo matemático" y "mundo de visión" ocurre en 007 (el ejecutor recibe φ(g) calculado por 002 a partir de un gesto clasificado por 006).
 
 ## 4. Requerimientos no funcionales globales (aplican a todos los módulos)
@@ -80,4 +95,4 @@ Ver Sección 8 de la especificación previa consolidada; cada riesgo específico
 
 ---
 
-*Orden de lectura recomendado: este documento → 001 → 002 → 003 → 004 → 005 → 006 → 007 → 008 → 009.*
+*Orden de lectura recomendado: este documento → 001 → 002 → 003 → 004 → 005 → 006 → 007 → 008 → 009 → (correcciones) 010 → 011 → 012 → 013.*
