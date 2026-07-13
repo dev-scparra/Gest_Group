@@ -1,0 +1,11 @@
+camara:
+  id: 0
+  ancho: 640
+  alto: 480
+filtro_ema:
+  alpha: 0.3
+estabilizador:
+  frames_estables: 10
+deteccion:
+  min_detection_confidence: 0.7
+  min_tracking_confidence: 0.5

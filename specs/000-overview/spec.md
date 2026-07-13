@@ -21,7 +21,7 @@ GestGroup es una aplicación de control por gestos en tiempo real cuyo diferenci
 | US-4 | Como usuario/demo, ajusto α en caliente y veo el efecto | P2 | 005, 008, 009 |
 | US-5 | Como evaluador, corro una suite que verifica ker(φ), Im(φ), G/ker(φ) y el teorema de isomorfismo sin cámara | P1 | 001, 002 |
 | US-6 | Como usuario, la app no se cae si pierdo la mano de cuadro | P1 | 003, 004, 005, 006, 009 |
-| US-7 | Como usuario en macOS, el control funciona de inmediato; Linux es deseable, Windows opcional | P3 | 007 |
+| US-7 | Como usuario en macOS o Windows, el control funciona de inmediato con las 5 acciones; en Linux, al menos el control de volumen | P2 | 007 |
 
 El detalle de cada historia (criterios Given/When/Then) vive en el `spec.md` del módulo dueño (columna "Módulos involucrados", primer módulo listado).
 
@@ -55,7 +55,7 @@ Nota de secuenciación: 001 y 002 no dependen de hardware y pueden construirse/p
 | NFR-G02 (Robustez) | Ninguna excepción de un módulo de E/S (cámara, MediaPipe, subprocess) puede propagarse y matar el proceso; cada módulo define su degradación explícita en su propio `spec.md`. |
 | NFR-G03 (Testabilidad) | Los módulos 001 y 002 (capa algebraica) son puros: sin `cv2`, sin `mediapipe`, sin `subprocess`. Se prueban con `pytest` sin hardware. |
 | NFR-G04 (Privacidad) | Sin red, sin telemetría, sin persistencia de video en disco por defecto. |
-| NFR-G05 (Portabilidad) | macOS primario, Linux secundario, Windows fuera de alcance del MVP (detalle en 007). |
+| NFR-G05 (Portabilidad) | macOS y Windows soportados en el MVP con paridad completa de las 5 acciones no-identidad (un solo proyecto Python, backend por SO seleccionado en runtime vía `platform.system()` — ver 007); Linux soportado de forma secundaria (solo volumen). |
 
 Cada módulo puede añadir NFRs propios en su `spec.md`; estos son el piso común.
 
@@ -75,7 +75,7 @@ Ver Sección 8 de la especificación previa consolidada; cada riesgo específico
 
 - **Q1 — Disparo único vs. repetición mientras se sostiene el gesto:** resuelto en 006 (disparo único, ver `spec.md` de 006, Sección de supuestos).
 - **Q2 — Manejo de fallo silencioso de `osascript`:** resuelto en 007.
-- **Q3 — Prioridad de SO:** macOS primario (entorno de desarrollo). Resuelto en 007.
+- **Q3 — Prioridad de SO:** macOS y Windows con paridad completa (5 acciones); Linux secundario (solo volumen). Un único proyecto Python — el ejecutor de acciones (007) selecciona el backend por SO en runtime, sin duplicar el resto del pipeline. Resuelto en 007.
 - **Q4 — Config al inicio vs. hot-reload:** resuelto en 009 (config al inicio para el MVP; hot-reload de α es P2 y vive también como opción en 005/008).
 
 ---

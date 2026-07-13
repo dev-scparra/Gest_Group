@@ -34,14 +34,14 @@ def ejecutar_accion(accion: Accion) -> ResultadoEjecucion:
 | ACC-FR-003 | En Linux, DEBE implementar al menos subir/bajar volumen vía `amixer` (NFR-G05: soporte de segundo nivel — pausa/play y cambio de pista en Linux quedan fuera del MVP). |
 | ACC-FR-004 | `Accion.A_E` (identidad) DEBE ser un no-op explícito (`return` inmediato), nunca debe intentar ejecutar un comando de SO. |
 | ACC-FR-005 | DEBE reportar si el `subprocess.run` subyacente falló (código de retorno distinto de 0) en vez de asumir éxito silenciosamente — esto resuelve Q2 de `000-overview`: el fallo se reporta, aunque en el MVP no se actúa sobre ese reporte más allá de loguearlo (no hay reintento automático). |
-| ACC-FR-006 | En Windows, el módulo puede no implementar ningún efecto real (`NotImplementedError` o no-op documentado) — Windows es explícitamente fuera de alcance del MVP (NFR-G05). No debe fingir éxito. |
+| ACC-FR-006 | En Windows, DEBE implementar las 5 acciones no-identidad con paridad completa respecto a macOS (NFR-G05, revisado): subir/bajar volumen, pausa/play, siguiente/anterior pista. Implementación vía simulación de teclas multimedia virtuales de Windows (`ctypes.windll.user32.keybd_event` con `VK_VOLUME_UP=0xAF`, `VK_VOLUME_DOWN=0xAE`, `VK_MEDIA_PLAY_PAUSE=0xB3`, `VK_MEDIA_NEXT_TRACK=0xB0`, `VK_MEDIA_PREV_TRACK=0xB1`) — no requiere dependencias de terceros (`pycaw`/`comtypes` quedan descartadas: las teclas virtuales cubren las 5 acciones con una sola API de `ctypes`, mientras que `pycaw` solo cubriría volumen). |
 
 ## 4. Criterios de aceptación
 
 - **Dado** `Accion.A_E`, **cuando** se llama `ejecutar_accion()`, **entonces** no se invoca ningún `subprocess`.
 - **Dado** `Accion.A1` (subir volumen) en macOS, **cuando** se llama `ejecutar_accion()` con permiso de Accesibilidad concedido, **entonces** el volumen del sistema sube de forma verificable (checklist manual, no automatizable).
 - **Dado** un `subprocess.run` mockeado que devuelve código de retorno distinto de 0, **cuando** se llama `ejecutar_accion()`, **entonces** `ResultadoEjecucion.exito` es `False` y se puede inspeccionar por qué (test automatizado, sin necesidad de macOS real).
-- **Dado** `platform.system()` mockeado a `"Windows"`, **cuando** se llama `ejecutar_accion()` con cualquier acción no-identidad, **entonces** el comportamiento documentado (no-op o `NotImplementedError`) es explícito y testeable, no un fallo silencioso ambiguo.
+- **Dado** `platform.system()` mockeado a `"Windows"`, **cuando** se llama `ejecutar_accion()` con cualquier acción no-identidad, **entonces** se invoca `keybd_event` con el código de tecla virtual correspondiente (verificable por mock, sin necesidad de Windows real) y `ResultadoEjecucion.exito` es `True`.
 
 ## 5. Casos borde
 
@@ -51,5 +51,5 @@ def ejecutar_accion(accion: Accion) -> ResultadoEjecucion:
 
 ## 6. No objetivos de este módulo
 
-- No decide qué gesto produce qué acción (eso ya está resuelto quand este módulo recibe la `Accion`; la decisión es de φ, módulo 002).
-- No implementa Windows de forma completa (ver ACC-FR-006 y NFR-G05).
+- No decide qué gesto produce qué acción (eso ya está resuelto cuando este módulo recibe la `Accion`; la decisión es de φ, módulo 002).
+- No implementa un backend de Linux con paridad completa (pausa/play y cambio de pista en Linux quedan fuera del MVP, ver ACC-FR-003).
