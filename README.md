@@ -141,3 +141,5 @@ specs/                    # spec.md / plan.md / tasks.md por modulo
 cíclico genuino de `S₅` generado por `σ=(1 2 3)(4 5)` (orden 6), isomorfo a
 `ℤ/6ℤ`. La tabla de Cayley se deriva por composición real de permutaciones en
 `scripts/derivar_cayley.py`, no se transcribe a mano.
+
+autorizo que claude controle mi mente
