@@ -14,7 +14,7 @@ Este módulo es intencionalmente delgado: no contiene lógica de negocio propia,
 
 ## 2. Contrato de interfaz
 
-**Entradas:** `config/default.yaml` (α, `frames_estables`, `camara_id`, resolución, umbrales de MediaPipe).
+**Entradas:** `config/default.yaml` (α, `frames_estables`, `camara_id`, resolución, umbrales de MediaPipe, `frames_captura`/`frames_espera`/`frames_resultado` de la captura de combos — [015](../015-captura-guiada-combos/spec.md), que reemplaza el `ventana_s` de 014).
 
 **Salidas:** ninguna programática — es el punto de entrada del proceso (`python -m src.main`).
 
@@ -33,6 +33,7 @@ Este módulo es intencionalmente delgado: no contiene lógica de negocio propia,
 | INT-FR-007 | DEBE permitir salida limpia con una tecla (p. ej. `q`), llamando `CapturaVideo.liberar()` (003) antes de terminar el proceso. |
 | INT-FR-008 (precisado por [013](../013-conformidad-menor/spec.md), CNF-FR-002) | DEBE capturar y loguear (sin propagar) cualquier excepción no anticipada de un frame individual, para que un fallo puntual no termine la sesión completa (NFR-G02 aplicado al loop principal). El manejador **NO puede saltarse `cv2.imshow` ni `cv2.waitKey`**: si lo hace, una excepción que se repita en todos los frames congela la ventana y la tecla `q` (INT-FR-007) deja de procesarse, quedando solo `Ctrl-C`. El frame se trata como "sin mano" (Sección 5) y el render y el teclado siguen ocurriendo. El logueo DEBE estar acotado (primera ocurrencia + 1 de cada N), o un fallo persistente inunda la consola a ~30 líneas/segundo. |
 | INT-FR-009 (añadido por 013, CNF-FR-005) | DEBE loguear el `mensaje` de `ResultadoEjecucion` cuando `ejecutar_accion()` devuelve `exito=False`. ACC-FR-005 dice que el fallo "se reporta, aunque en el MVP no se actúa sobre ese reporte **más allá de loguearlo**" — pero el logueo no existía: `main.py` descartaba el valor de retorno, así que todo el reporte de errores de 007 moría en silencio y el usuario veía "el gesto se detecta pero no pasa nada" sin diagnóstico. |
+| INT-FR-010 (añadido por 014, **revisado por [015](../015-captura-guiada-combos/spec.md)**) | DEBE instanciar `CapturadorCombo` (`frames_captura`/`frames_espera`/`frames_resultado` de `config/default.yaml`, clave `combinador.*`) junto al resto de módulos con estado (INT-FR-001). En el loop, DEBE alimentar el **gesto clasificado por frame** a `capturador.actualizar(gesto_actual)` (que reemplaza al `EstabilizadorGesto` en el flujo de combos: la votación de mayoría es el mecanismo de estabilización). Cuando `estado_combo.disparar` no es `None` (frame borde en que se cierra el segundo gesto), DEBE aplicar `φ(estado_combo.disparar)` —donde `disparar = g₁∘g₂` vía `operacion_G` (001)— y ejecutar la acción exactamente una vez. `procesar_frame` DEBE devolver además `estado_combo` para que 008 dibuje el HUD (VIS-FR-009). La versión de 014 (ventana de tiempo sobre gestos confirmados, `time.time()`) queda reemplazada; ya no se usa reloj. |
 
 ## 4. Criterios de aceptación
 

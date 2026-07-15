@@ -22,6 +22,7 @@ GestGroup es una aplicación de control por gestos en tiempo real cuyo diferenci
 | US-5 | Como evaluador, corro una suite que verifica ker(φ), Im(φ), G/ker(φ) y el teorema de isomorfismo sin cámara | P1 | 001, 002 |
 | US-6 | Como usuario, la app no se cae si pierdo la mano de cuadro | P1 | 003, 004, 005, 006, 009 |
 | US-7 | Como usuario en macOS o Windows, el control funciona de inmediato con las 5 acciones; en Linux, al menos el control de volumen | P2 | 007 |
+| US-8 (añadida por [014](../014-combos-secuenciales/spec.md), revisada por [015](../015-captura-guiada-combos/spec.md)) | Como usuario, capturo dos gestos guiado por la pantalla (votación de mayoría por frames, con "prepárate" y cuenta regresiva) para disparar una acción combinada `φ(g₁∘g₂)`, con la composición ∘ de G calculada en vivo | P2 | 001, 002, 006, 008, 009, 015 |
 
 El detalle de cada historia (criterios Given/When/Then) vive en el `spec.md` del módulo dueño (columna "Módulos involucrados", primer módulo listado).
 
@@ -62,6 +63,19 @@ Los módulos 001-009 están implementados y su suite (60 tests) está en verde. 
 
 Nota de secuenciación: 001 y 002 no dependen de hardware y pueden construirse/probarse/defenderse el mismo día del setup, en paralelo con 003-005. El punto de integración real entre "mundo matemático" y "mundo de visión" ocurre en 007 (el ejecutor recibe φ(g) calculado por 002 a partir de un gesto clasificado por 006).
 
+### 3.2 Spec de nueva capacidad (extensión post-MVP)
+
+A diferencia de 010-013 (que corrigen desviaciones entre specs y código ya escrito), la spec 014 añade una **capacidad nueva** que el MVP original no contemplaba: usar la composición `∘` de `G` durante la ejecución en vivo, no solo como herramienta de verificación offline (tests, `analisis.py`).
+
+| # | Spec | Prefijo | Módulo nuevo | Amplía a |
+|---|---|---|---|---|
+| [014](../014-combos-secuenciales/spec.md) | Combos secuenciales — aplicar ∘ en vivo (Opción A) — **superada por 015** | `CMB-` | `src/algebra/combinador.py` (eliminado) | 009 (INT-FR-010), 008 (VIS-FR-009) |
+| [015](../015-captura-guiada-combos/spec.md) | Captura guiada de combos por votación de mayoría (+ HUD) | `CAP-CMB-` | `src/clasificador/capturador_combo.py` | 009 (INT-FR-010), 008 (VIS-FR-009) |
+
+**014 → 015:** la 014 disparó `φ(g₁∘g₂)` con una ventana de tiempo sobre gestos confirmados; la 015 lo reemplaza por captura guiada con votación de mayoría sobre ventanas de frames (robusta a la transición entre gestos) y asistencia visual en pantalla (HUD por fases). La composición `∘` en vivo se conserva; cambia el mecanismo de captura y disparo. Ver 015/spec.md Sección 1.
+
+**Por qué esta forma y no la alternativa (Opción B, dos manos simultáneas):** se evaluó también combinar el gesto de cada mano en el mismo frame (`φ(g_izq ∘ g_der)`, instantáneo, sin ventana de tiempo), pero exige tocar la capa de detección (`DetectorManos`, hoy `max_num_hands=1`, DET-FR-001) y de clasificación (006), ambas ya cerradas y validadas por la spec 012. La Opción A (elegida) reutiliza `EstabilizadorGesto` y `operacion_G` tal como existen, sin reabrir 004 ni 006 — menor superficie de cambio para el mismo objetivo pedagógico (mostrar `∘` corriendo en vivo, no solo en `pytest`). Ver `014/spec.md` Sección 7 (No objetivos) para la Opción B como extensión futura explícita.
+
 ## 4. Requerimientos no funcionales globales (aplican a todos los módulos)
 
 | ID | Requerimiento |
@@ -81,6 +95,7 @@ Cada módulo puede añadir NFRs propios en su `spec.md`; estos son el piso comú
 - **SC-G03:** latencia gesto-estable→acción ≤500ms en el 95% de los disparos (detalle en 006+007).
 - **SC-G04:** 100% de los pares (gᵢ,gⱼ)∈G×G satisface φ(gᵢ∘gⱼ)=φ(gᵢ)∘φ(gⱼ), verificado automáticamente (detalle en 002).
 - **SC-G05:** las 4 demostraciones formales del reporte (Sección 8 del doc. de contexto) tienen respaldo ejecutable (tests en verde) — repartido entre 001 (Demostración 1), 002 (Demostraciones 2 y 3), 005 (Demostración 4).
+- **SC-G06 (añadido por 014, revisado por [015](../015-captura-guiada-combos/spec.md)):** ≥90% de los combos guiados intencionales (dos gestos sostenidos durante sus ventanas de captura completas) disparan `φ(g₁∘g₂)`; la votación de mayoría absorbe los frames de transición entre un gesto y el siguiente (detalle de medición en 015).
 
 ## 6. Riesgos globales
 
@@ -95,4 +110,4 @@ Ver Sección 8 de la especificación previa consolidada; cada riesgo específico
 
 ---
 
-*Orden de lectura recomendado: este documento → 001 → 002 → 003 → 004 → 005 → 006 → 007 → 008 → 009 → (correcciones) 010 → 011 → 012 → 013.*
+*Orden de lectura recomendado: este documento → 001 → 002 → 003 → 004 → 005 → 006 → 007 → 008 → 009 → (correcciones) 010 → 011 → 012 → 013 → (nueva capacidad) 014 → 015.*

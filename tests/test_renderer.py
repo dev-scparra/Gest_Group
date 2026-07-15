@@ -2,6 +2,7 @@ import numpy as np
 
 from src.algebra.grupo_acciones import Accion
 from src.algebra.grupo_gestos import Gesto
+from src.clasificador.capturador_combo import EstadoCombo, FaseCombo
 from src.visualizacion.renderer import dibujar_frame
 
 
@@ -49,3 +50,47 @@ def test_dibujar_frame_dibuja_fps_cuando_se_le_pasa():
     assert frame_con_fps.shape == (480, 640, 3)
     # Con FPS hay pixeles encendidos que sin FPS no estan (la franja del texto).
     assert frame_con_fps.sum() > frame_sin_fps.sum()
+
+
+def test_hud_combo_capturando_dibuja_barra_y_lider():
+    """VIS-FR-009 (spec 015): en captura, el HUD enciende pixeles (titulo, votos, barra)."""
+    estado = EstadoCombo(
+        fase=FaseCombo.CAPTURANDO_G1,
+        frames_restantes=8,
+        frames_total_fase=20,
+        lider=Gesto.G3,
+        conteo=[(Gesto.G3, 12), (Gesto.E, 3)],
+    )
+    con_hud = dibujar_frame(_frame(), None, Gesto.G3, None, 0.3, estado_combo=estado)
+    sin_hud = dibujar_frame(_frame(), None, Gesto.G3, None, 0.3, estado_combo=None)
+
+    assert con_hud.shape == (480, 640, 3)
+    assert con_hud.sum() != sin_hud.sum()  # el HUD (panel + texto + barra) modifica pixeles
+
+
+def test_hud_combo_resultado_muestra_la_composicion():
+    """VIS-FR-009: en RESULTADO se muestra g1 o g2 = compuesto sin lanzar excepcion."""
+    estado = EstadoCombo(
+        fase=FaseCombo.RESULTADO,
+        g1=Gesto.G1,
+        g2=Gesto.G3,
+        compuesto=Gesto.G4,
+    )
+    resultado = dibujar_frame(_frame(), None, Gesto.E, Accion.A4, 0.3, estado_combo=estado)
+
+    assert resultado.shape == (480, 640, 3)
+
+
+def test_hud_combo_inactivo_no_lanza_excepcion():
+    """La fase INACTIVO dibuja solo una pista y no rompe nada."""
+    estado = EstadoCombo(fase=FaseCombo.INACTIVO)
+    resultado = dibujar_frame(_frame(), None, Gesto.E, None, 0.3, estado_combo=estado)
+
+    assert resultado.shape == (480, 640, 3)
+
+
+def test_dibujar_frame_estado_combo_none_no_lanza_excepcion():
+    """El caso por defecto (sin HUD) sigue funcionando: estado_combo=None no rompe nada."""
+    resultado = dibujar_frame(_frame(), None, Gesto.G1, Accion.A1, 0.3)
+
+    assert resultado.shape == (480, 640, 3)

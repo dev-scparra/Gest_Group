@@ -9,3 +9,11 @@ estabilizador:
 deteccion:
   min_detection_confidence: 0.7
   min_tracking_confidence: 0.5
+combinador:
+  # Captura guiada de combos por votacion de mayoria (spec 015). Cada gesto del combo
+  # se vota sobre una ventana de `frames_captura` frames; `frames_espera` es el "preparate"
+  # entre el gesto 1 y el 2; `frames_resultado` es cuanto se muestra el resultado. A ~30
+  # FPS: 20 frames ~ 0.67s, 12 ~ 0.4s, 25 ~ 0.83s. A calibrar con camara (T015).
+  frames_captura: 20
+  frames_espera: 12
+  frames_resultado: 25

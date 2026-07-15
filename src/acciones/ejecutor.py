@@ -4,6 +4,12 @@ Ver spec 007-ejecutor-acciones. Un solo modulo cross-platform: el backend se
 selecciona en runtime con platform.system() (NFR-G05, revisado) — no hay
 proyectos separados por SO. macOS y Windows tienen paridad completa de las 5
 acciones; Linux soporta solo volumen.
+
+macOS: el volumen usa `osascript set volume` (global). Pausa/siguiente/anterior
+usan teclas MULTIMEDIA del sistema (NSSystemDefined, via PyObjC) en vez de
+`osascript ... key code`: `key code` va a la ventana en primer plano —la de
+OpenCV al correr el pipeline—, no al reproductor, asi que "no hacia nada". Las
+teclas multimedia son globales, como el volumen (ver spec 007, revision de foco).
 """
 
 import platform
@@ -26,6 +32,22 @@ _VK_POR_ACCION = {
     Accion.A3: VK_MEDIA_PLAY_PAUSE,
     Accion.A4: VK_MEDIA_NEXT_TRACK,
     Accion.A5: VK_MEDIA_PREV_TRACK,
+}
+
+# --- macOS: teclas multimedia del sistema (NSSystemDefined, subtype 8) ---
+# Son GLOBALES como el volumen: las procesa el reproductor activo del sistema sin
+# importar que ventana tenga el foco. La version anterior usaba `osascript ... key
+# code 49 / 124 / 123`, que envia la tecla a la ventana EN PRIMER PLANO — que al correr
+# `python -m src.main` es la ventana de OpenCV, no Spotify/Music: por eso pausa/siguiente/
+# anterior "no hacian nada" mientras el volumen (global) si funcionaba.
+NX_KEYTYPE_PLAY = 16
+NX_KEYTYPE_NEXT = 17
+NX_KEYTYPE_PREVIOUS = 18
+
+_NX_KEY_POR_ACCION = {
+    Accion.A3: NX_KEYTYPE_PLAY,
+    Accion.A4: NX_KEYTYPE_NEXT,
+    Accion.A5: NX_KEYTYPE_PREVIOUS,
 }
 
 
@@ -82,22 +104,44 @@ def _run(comando: list[str]) -> ResultadoEjecucion:
     return ResultadoEjecucion(exito=True, mensaje=None)
 
 
+def _enviar_tecla_multimedia_macos(nx_key: int) -> None:
+    """Postea una tecla multimedia global del sistema (NSSystemDefined, subtype 8).
+
+    Import perezoso de PyObjC (Quartz/AppKit): asi (a) no se carga salvo en macOS y solo
+    cuando se dispara pausa/siguiente/anterior, y (b) se puede parchear en tests sin
+    depender de que PyObjC este instalado, igual que `_enviar_tecla_virtual` en Windows.
+    Requiere pyobjc-framework-Quartz y -Cocoa (solo macOS, ver requirements.txt)."""
+    import Quartz
+    from AppKit import NSEvent
+
+    for down in (True, False):
+        flags = 0xA00 if down else 0xB00
+        data1 = (nx_key << 16) | ((0xA if down else 0xB) << 8)
+        evento = NSEvent.otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2_(
+            14, (0, 0), flags, 0, 0, None, 8, data1, -1
+        )
+        Quartz.CGEventPost(0, evento.CGEvent())
+
+
 def _ejecutar_macos(accion: Accion) -> ResultadoEjecucion:
+    # Volumen: osascript `set volume` ya es global (independiente del foco), se mantiene.
     if accion == Accion.A1:
         return _run(["osascript", "-e",
                      "set volume output volume (output volume of (get volume settings) + 10)"])
     if accion == Accion.A2:
         return _run(["osascript", "-e",
                      "set volume output volume (output volume of (get volume settings) - 10)"])
-    if accion == Accion.A3:
-        return _run(["osascript", "-e",
-                     'tell application "System Events" to key code 49'])  # espacio
-    if accion == Accion.A4:
-        return _run(["osascript", "-e",
-                     'tell application "System Events" to key code 124 using command down'])
-    if accion == Accion.A5:
-        return _run(["osascript", "-e",
-                     'tell application "System Events" to key code 123 using command down'])
+    # Pausa/siguiente/anterior: tecla multimedia global, no `key code` a la ventana en foco.
+    nx_key = _NX_KEY_POR_ACCION.get(accion)
+    if nx_key is None:
+        return ResultadoEjecucion(exito=True, mensaje=None)
+    try:
+        _enviar_tecla_multimedia_macos(nx_key)
+    except Exception as exc:  # PyObjC ausente o fallo al postear el evento (NFR-G02)
+        return ResultadoEjecucion(
+            exito=False,
+            mensaje=f"tecla multimedia macOS fallo ({exc}); instalar pyobjc-framework-Quartz",
+        )
     return ResultadoEjecucion(exito=True, mensaje=None)
 
 

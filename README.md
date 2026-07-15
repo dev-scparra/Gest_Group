@@ -27,13 +27,15 @@ pip install -r requirements.txt
 - **Cámara:** la primera vez que se ejecuta `main.py`, macOS pedirá permiso
   de cámara para la app/terminal que ejecuta Python. Concédelo en
   **Preferencias del Sistema → Privacidad y Seguridad → Cámara**.
-- **Accesibilidad:** las acciones de pausa/play y cambio de pista usan
-  `osascript ... System Events` (simulación de teclas), lo que requiere
-  permiso de **Preferencias del Sistema → Privacidad y Seguridad →
-  Accesibilidad** para la terminal/IDE/intérprete de Python. Sin este
-  permiso, esos comandos fallan silenciosamente o interrumpen la demo
-  pidiendo el permiso de forma interactiva — verificarlo **antes** de
-  presentar, no durante.
+- **Accesibilidad:** las acciones de pausa/play, siguiente y anterior usan
+  **teclas multimedia del sistema** (`NSSystemDefined` vía PyObjC) — globales,
+  no dependen de qué ventana tenga el foco (a diferencia de la versión anterior
+  con `osascript ... key code`, que enviaba la tecla a la ventana de OpenCV en
+  vez de al reproductor). Postear estos eventos sintéticos requiere permiso de
+  **Preferencias del Sistema → Privacidad y Seguridad → Accesibilidad** para la
+  terminal/IDE/intérprete de Python. Sin ese permiso, la tecla no llega al
+  reproductor — concédelo **antes** de presentar. (El volumen usa `osascript
+  set volume`, que es global y no requiere Accesibilidad.)
 
 ### Windows y Linux
 
@@ -50,8 +52,8 @@ python -m src.main
 ```
 
 Salir con la tecla `q`. La configuración (α del filtro EMA, frames estables
-del debounce, resolución/FPS de cámara, umbrales de MediaPipe) se carga desde
-[`config/default.yaml`](config/default.yaml).
+del debounce, resolución/FPS de cámara, umbrales de MediaPipe, ventana de
+combos) se carga desde [`config/default.yaml`](config/default.yaml).
 
 ### Gestos reconocidos
 
@@ -75,6 +77,32 @@ La tabla de clasificación es la de
 reemplaza a la de la Sección 4.5 del documento de contexto: aquella declaraba el
 pulgar como indiferente en la fila del puño, lo que hacía de `G5` un caso particular
 de `G3` y dejaba a `G5` inalcanzable.
+
+### Combos guiados — la composición `∘` en vivo
+
+La interacción con la cámara es por **combos**: capturas **dos gestos** y el
+sistema ejecuta `φ(g₁ ∘ g₂)`, usando la composición `∘` del grupo `G`
+(`operacion_G`). Por ejemplo, `G1` (1 dedo) y luego `G3` (puño) disparan
+
+```
+G1 ∘ G3 = G4  →  "siguiente pista"
+```
+
+es decir, la acción de `G4` **sin hacer el gesto de mano abierta**.
+
+Para que la transición entre un gesto y el siguiente no ensucie la lectura,
+cada gesto se captura durante una ventana de frames y se resuelve por
+**votación de mayoría** (el gesto que más frames ganó). La ventana de la cámara
+te **asiste** por fases: `gesto 1 → prepárate → gesto 2 → resultado`, con el
+gesto que va ganando, una barra de cuenta regresiva y el resultado
+`g₁ o g₂ = compuesto`. El gesto de reposo `E` nunca cuenta como gesto del combo
+(es la identidad de `G`): si una ventana la gana el reposo, el combo se cancela.
+
+Los tamaños de ventana se ajustan en `config/default.yaml`
+(`combinador.frames_captura`, `frames_espera`, `frames_resultado`). Ver
+[`specs/015`](specs/015-captura-guiada-combos/spec.md) y
+[`docs/axiomas_de_grupo_explicados.md`](docs/axiomas_de_grupo_explicados.md),
+Sección 8.
 
 ### Comprobar la detección sin lanzar acciones
 
@@ -103,7 +131,7 @@ los 36 pares de `G×G`. Es el artefacto de evidencia para el reporte técnico
 pytest tests/ -v
 ```
 
-86 tests, todos deterministas y sin necesidad de cámara/hardware real (capa
+99 tests, todos deterministas y sin necesidad de cámara/hardware real (capa
 algebraica pura + mocks para captura/detección/ejecución de acciones).
 
 Las specs [010](specs/010-robustez-ejecutor/spec.md)–[013](specs/013-conformidad-menor/spec.md)
@@ -117,18 +145,18 @@ falla si alguien importa `cv2` dentro de `src/algebra/`.
 ## Estructura del repositorio
 
 ```
-config/default.yaml       # alpha, frames_estables, camara, umbrales mediapipe
+config/default.yaml       # alpha, frames_estables, camara, umbrales mediapipe, frames de combos
 src/
 ├── main.py                    # punto de entrada — orquestacion del pipeline
 ├── algebra/                   # 001/002 — grupos G y A, homomorfismo φ, analisis
 ├── captura/                   # 003 — OpenCV
 ├── deteccion/                 # 004 — MediaPipe Hands
 ├── preprocesamiento/          # 005 — filtro EMA
-├── clasificador/              # 006 — clasificacion geometrica + debounce
+├── clasificador/              # 006/015 — clasificacion geometrica, debounce, captura de combos
 ├── acciones/                  # 007 — ejecutor de acciones (macOS/Linux/Windows)
-└── visualizacion/             # 008 — overlay de video
+└── visualizacion/             # 008 — overlay + HUD de combos
 scripts/derivar_cayley.py # deriva la tabla de Cayley de G desde S5 (trazabilidad)
-tests/                    # 60 tests, un archivo por modulo
+tests/                    # 99 tests, un archivo por modulo
 docs/demostraciones.md    # demostraciones formales + evidencia ejecutable
 specs/                    # spec.md / plan.md / tasks.md por modulo
 ```

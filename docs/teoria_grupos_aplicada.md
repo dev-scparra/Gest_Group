@@ -27,13 +27,25 @@ en la mano, no solo con la definición abstracta.
 
 Dos aclaraciones importantes antes de entrar en detalle:
 
-1. **La operación `∘` de `G` es un objeto matemático de análisis, no algo que
-   la cámara ejecute en vivo.** Cuando el pipeline corre (`src/main.py`),
-   cada frame se clasifica a **un solo** gesto `g ∈ G` y se le aplica
-   directamente `φ(g)`. La función `operacion_G` (la tabla de Cayley) solo se
-   usa dentro de `src/algebra/` — para *verificar* que `φ` es homomorfismo y
-   para los tests — no para combinar dos gestos consecutivos que el usuario
-   hizo frente a la cámara.
+1. **La operación `∘` de `G` nació como un objeto matemático de análisis, y
+   ese sigue siendo su uso principal.** Por defecto, cuando el pipeline corre
+   (`src/main.py`), cada frame se clasifica a **un solo** gesto `g ∈ G` y se le
+   aplica directamente `φ(g)`. La función `operacion_G` (la tabla de Cayley) se
+   usa dentro de `src/algebra/` para *verificar* que `φ` es homomorfismo y para
+   los tests.
+
+   **Actualización (spec [015](../specs/015-captura-guiada-combos/spec.md), que
+   supersede a la 014):** desde la funcionalidad de *combos*, `operacion_G` tiene
+   además un consumidor que **sí** corre en vivo — y de hecho la interacción con
+   la cámara pasó a ser por combos. El usuario captura dos gestos guiado en
+   pantalla (cada uno resuelto por votación de mayoría sobre una ventana de
+   frames, con una fase de "prepárate" entre ambos), y el sistema aplica
+   `φ(g₁ ∘ g₂)` — combinando dos gestos consecutivos que hizo frente a la cámara,
+   exactamente lo que la frase original de este punto decía que *no* pasaba. La
+   composición `∘` dejó de ser exclusivamente offline:
+   `src/clasificador/capturador_combo.py` (`CapturadorCombo`) la ejecuta como
+   parte del pipeline. Ver `docs/axiomas_de_grupo_explicados.md` (Sección 8) para
+   la explicación accesible.
 2. **El módulo de álgebra (`src/algebra/`) y el clasificador geométrico
    (`src/clasificador/gestos.py`) son dos cosas independientes que comparten
    solo el nombre `Gesto`.** El clasificador decide "qué dedos están arriba"

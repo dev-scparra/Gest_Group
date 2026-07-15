@@ -2,6 +2,9 @@ import subprocess
 from unittest.mock import MagicMock, patch
 
 from src.acciones.ejecutor import (
+    NX_KEYTYPE_NEXT,
+    NX_KEYTYPE_PLAY,
+    NX_KEYTYPE_PREVIOUS,
     TIMEOUT_SUBPROCESS_S,
     VK_MEDIA_NEXT_TRACK,
     VK_MEDIA_PLAY_PAUSE,
@@ -41,32 +44,35 @@ def test_macos_bajar_volumen(mock_run, mock_system):
     assert "output volume" in comando[2] and "- 10" in comando[2]
 
 
+@patch("src.acciones.ejecutor._enviar_tecla_multimedia_macos")
 @patch("src.acciones.ejecutor.platform.system", return_value="Darwin")
-@patch("src.acciones.ejecutor.subprocess.run")
-def test_macos_pausa_play(mock_run, mock_system):
-    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-    ejecutar_accion(Accion.A3)
-    comando = mock_run.call_args[0][0]
-    assert comando[0] == "osascript"
-    assert "key code 49" in comando[2]
+def test_macos_media_keys_globales_no_key_code(mock_system, mock_media):
+    """Spec 007 (revision de foco): pausa/siguiente/anterior usan teclas MULTIMEDIA del
+    sistema, globales, en vez de `osascript key code`, que iba a la ventana en primer
+    plano (la de OpenCV) en vez del reproductor."""
+    mapeo = {
+        Accion.A3: NX_KEYTYPE_PLAY,
+        Accion.A4: NX_KEYTYPE_NEXT,
+        Accion.A5: NX_KEYTYPE_PREVIOUS,
+    }
+    for accion, nx_esperado in mapeo.items():
+        mock_media.reset_mock()
+        resultado = ejecutar_accion(accion)
+        mock_media.assert_called_once_with(nx_esperado)
+        assert resultado.exito is True
 
 
 @patch("src.acciones.ejecutor.platform.system", return_value="Darwin")
-@patch("src.acciones.ejecutor.subprocess.run")
-def test_macos_siguiente_pista(mock_run, mock_system):
-    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-    ejecutar_accion(Accion.A4)
-    comando = mock_run.call_args[0][0]
-    assert "key code 124 using command down" in comando[2]
-
-
-@patch("src.acciones.ejecutor.platform.system", return_value="Darwin")
-@patch("src.acciones.ejecutor.subprocess.run")
-def test_macos_pista_anterior(mock_run, mock_system):
-    mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-    ejecutar_accion(Accion.A5)
-    comando = mock_run.call_args[0][0]
-    assert "key code 123 using command down" in comando[2]
+@patch(
+    "src.acciones.ejecutor._enviar_tecla_multimedia_macos",
+    side_effect=ImportError("No module named 'Quartz'"),
+)
+def test_macos_media_key_sin_pyobjc_reporta_fallo_sin_excepcion(mock_media, mock_system):
+    """NFR-G02: si PyObjC no esta instalado, la tecla multimedia falla de forma
+    controlada (exito=False con sugerencia), no tumba el pipeline."""
+    resultado = ejecutar_accion(Accion.A3)
+    assert resultado.exito is False
+    assert "pyobjc" in resultado.mensaje.lower()
 
 
 @patch("src.acciones.ejecutor.platform.system", return_value="Darwin")
@@ -119,7 +125,8 @@ def test_binario_ausente_reporta_fallo_sin_excepcion(mock_run, mock_system):
     side_effect=subprocess.TimeoutExpired(cmd="osascript", timeout=TIMEOUT_SUBPROCESS_S),
 )
 def test_timeout_reporta_fallo(mock_run, mock_system):
-    resultado = ejecutar_accion(Accion.A3)
+    # A1 (volumen) sigue usando osascript/subprocess; A3-A5 ya no (usan teclas multimedia).
+    resultado = ejecutar_accion(Accion.A1)
     assert resultado.exito is False
     assert "timeout" in resultado.mensaje
 

@@ -17,7 +17,7 @@ from src.algebra.grupo_acciones import Accion
 from src.algebra.grupo_gestos import Gesto
 from src.algebra.homomorfismo import Homomorfismo
 from src.captura.video_capture import CapturaVideo
-from src.clasificador.estabilizador import EstabilizadorGesto
+from src.clasificador.capturador_combo import CapturadorCombo, EstadoCombo
 from src.clasificador.gestos import clasificar_gesto
 from src.deteccion.mediapipe_handler import DetectorManos
 from src.preprocesamiento.filtro_ema import FiltroEMA
@@ -46,7 +46,7 @@ def cargar_config(ruta: Path = CONFIG_PATH) -> dict:
         raise FileNotFoundError(f"No se encontro el archivo de configuracion: {ruta}")
     with open(ruta, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    claves_requeridas = {"camara", "filtro_ema", "estabilizador", "deteccion"}
+    claves_requeridas = {"camara", "filtro_ema", "estabilizador", "deteccion", "combinador"}
     faltantes = claves_requeridas - set(config or {})
     if faltantes:
         raise ValueError(f"config/default.yaml mal formado: faltan claves {faltantes}")
@@ -57,8 +57,8 @@ def cargar_config(ruta: Path = CONFIG_PATH) -> dict:
 class EstadoPipeline:
     """El unico estado mutable de la orquestacion (INT-FR-006).
 
-    `None` significa "aun no se ha confirmado ninguna accion", que es distinto de
-    `Accion.A_E` ("ninguna"), una accion identidad ya confirmada (SEM-FR-003).
+    `None` en `ultima_accion` significa "aun no se ha confirmado ninguna accion", que es
+    distinto de `Accion.A_E` ("ninguna"), una accion identidad ya confirmada (SEM-FR-003).
     """
 
     ultima_accion: Accion | None = None
@@ -88,17 +88,22 @@ def procesar_frame(
     frame_rgb,
     detector: DetectorManos,
     filtro: FiltroEMA,
-    estabilizador: EstabilizadorGesto,
+    capturador: CapturadorCombo,
     homomorfismo: Homomorfismo,
     estado: EstadoPipeline,
-) -> tuple[Gesto, Accion | None]:
-    """Un ciclo del pipeline: 004 -> 005 -> 006 -> phi (002) -> 007.
+) -> tuple[Gesto, Accion | None, EstadoCombo]:
+    """Un ciclo del pipeline: 004 -> 005 -> 006 -> capturador (015) -> phi (002) -> 007.
 
     Sin cv2 ni I/O de ventana, para que la orquestacion sea testeable sin camara
     (SEM-FR-005) — 009 era el unico modulo sin suite propia, y es justo donde vive
     el estado que VIS-FR-003 regula.
 
-    Retorna (gesto instantaneo, ultima accion confirmada) para que 008 los dibuje.
+    La interaccion es por COMBOS (spec 015): el capturador vota por mayoria dos gestos
+    sobre ventanas de frames y, al cerrar el segundo, emite `disparar` = g1 o g2 en UN
+    solo frame. El capturador es frame-driven (un gesto por llamada), asi que reemplaza
+    al estabilizador+combinador de 011/014 y no necesita reloj.
+
+    Retorna (gesto instantaneo, ultima accion confirmada, estado del combo) para 008.
     """
     landmarks = detector.procesar(frame_rgb)
 
@@ -108,25 +113,32 @@ def procesar_frame(
     else:
         gesto_actual = clasificar_gesto(filtro.aplicar(landmarks))
 
-    # INT-FR-004: se alimenta E explicitamente en los frames sin mano, en vez de
-    # omitir la llamada, para que el contador de debounce no cruce una perdida de mano.
-    gesto_confirmado = estabilizador.actualizar(gesto_actual)
+    # El capturador vota por mayoria; feed E incluido, que es como cancela un combo o
+    # re-arma el siguiente (INT-FR-004 sigue vigente: E se alimenta explicitamente).
+    estado_combo = capturador.actualizar(gesto_actual)
 
-    if gesto_confirmado is not None:
-        accion = homomorfismo.aplicar(gesto_confirmado)  # INT-FR-005
+    if estado_combo.disparar is not None:
+        # INT-FR-010 / spec 015: `disparar` = g1 o g2, calculado con operacion_G (001) —
+        # la composicion o de G corriendo en vivo. Solo llega en el frame borde, asi que
+        # phi + ejecutar_accion corren exactamente una vez por combo (INT-FR-005).
+        accion = homomorfismo.aplicar(estado_combo.disparar)
         resultado = ejecutar_accion(accion)
-        if not resultado.exito:
-            # ACC-FR-005: el fallo se reporta. Sin esto, todo el reporte de errores
-            # de 007 moria en silencio y el usuario veia "no pasa nada" (CNF-FR-005).
-            _log_acotado(f"[accion] {accion.name} fallo: {resultado.mensaje}")
 
-        # SEM-FR-001: A_E es un no-op (ACC-FR-004), no un disparo real. Confirmar E
-        # -- que es lo que pasa a los `frames_estables` frames de retirar la mano --
-        # no debe desplazar del overlay a la ultima accion que si tuvo efecto.
+        # Diagnostico: `disparar` es un evento puntual (un frame por combo), asi que
+        # loguearlo no inunda la consola y hace visible que el pipeline SI ejecuta —
+        # distingue "el combo no se cierra" de "se dispara pero el SO/foco lo ignora".
+        estado_so = "OK" if resultado.exito else f"FALLO: {resultado.mensaje}"
+        print(
+            f"[combo] {estado_combo.g1.value} o {estado_combo.g2.value} "
+            f"= {estado_combo.compuesto.value} -> {accion.value} [{estado_so}]"
+        )
+
+        # SEM-FR-001: A_E (un combo que se anula, p. ej. G3 o G3) es un no-op; no debe
+        # desplazar del overlay a la ultima accion que si tuvo efecto.
         if accion != Accion.A_E:
             estado.ultima_accion = accion
 
-    return gesto_actual, estado.ultima_accion
+    return gesto_actual, estado.ultima_accion, estado_combo
 
 
 def main() -> None:
@@ -142,12 +154,15 @@ def main() -> None:
         min_tracking_confidence=config["deteccion"]["min_tracking_confidence"],
     )
     filtro = FiltroEMA(alpha=config["filtro_ema"]["alpha"])
-    estabilizador = EstabilizadorGesto(
-        frames_estables=config["estabilizador"]["frames_estables"]
-    )
     homomorfismo = Homomorfismo()
+    capturador = CapturadorCombo(
+        frames_captura=config["combinador"]["frames_captura"],
+        frames_espera=config["combinador"]["frames_espera"],
+        frames_resultado=config["combinador"]["frames_resultado"],
+    )
 
     estado = EstadoPipeline()
+    estado_combo = capturador.actualizar(Gesto.E)  # estado inicial para el primer render
     medidor = MedidorFPS()
 
     try:
@@ -160,8 +175,8 @@ def main() -> None:
                 break
 
             try:
-                gesto_actual, accion = procesar_frame(
-                    frame_rgb, detector, filtro, estabilizador, homomorfismo, estado
+                gesto_actual, accion, estado_combo = procesar_frame(
+                    frame_rgb, detector, filtro, capturador, homomorfismo, estado
                 )
                 landmarks_dibujo = detector.landmarks_para_dibujo()
             except Exception as exc:  # INT-FR-008 / NFR-G02
@@ -174,7 +189,8 @@ def main() -> None:
 
             try:
                 dibujar_frame(
-                    frame_bgr, landmarks_dibujo, gesto_actual, accion, filtro.alpha, fps
+                    frame_bgr, landmarks_dibujo, gesto_actual, accion, filtro.alpha, fps,
+                    estado_combo=estado_combo,
                 )
             except Exception as exc:  # NFR-G02
                 _log_acotado(f"Fallo al dibujar el overlay, se muestra crudo: {exc}")
